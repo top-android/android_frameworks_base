@@ -1701,6 +1701,16 @@ public class StorageManager {
     }
 
     /**
+     * cannon A15 老 vendor 适配：A15 删除了 StorageManager.inCryptKeeperBounce()，
+     * 而 A12 prebuilt com.mediatek.ims（WifiPdnHandler）仍静态调用它。该状态在新平台已不存在，
+     * 恒返回 false = 「不在 bounce 窗口、存储可用」，正常语义即正确。必须 @hide（prebuilt 运行期兼容）。
+     * @hide
+     */
+    public static boolean inCryptKeeperBounce() {
+        return false;
+    }
+
+    /**
      * @hide
      * Does this device have file-based encryption (FBE) enabled?
      *

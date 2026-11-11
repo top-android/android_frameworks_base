@@ -1038,6 +1038,17 @@ class StorageManagerService extends IStorageManager.Stub
     }
 
     private boolean isHevcDecoderSupported() {
+        // cannon: A14 system libs + A12 vendor media stack => MediaCodecList.getCodecCount()
+        // blocks forever inside BpMediaPlayerService::getCodecList (verified with kill -3:
+        // the StorageManagerService handler thread is parked in
+        // IPCThreadState::waitForResponse).  Because this runs inside handleSystemReady(),
+        // the whole handler thread stalls => H_DAEMON_CONNECTED / H_BOOT_COMPLETED /
+        // H_VOLUME_MOUNT are never processed => no emulated volume => /storage/emulated is
+        // empty, so DocumentsUI spins on "Failed to find root .../root/primary".
+        // Transcoding is meaningless on this port, so skip the probe entirely.
+        if (SystemProperties.getBoolean("persist.sys.cannon.skip_hevc_probe", true)) {
+            return false;
+        }
         MediaCodecList codecList = new MediaCodecList(MediaCodecList.REGULAR_CODECS);
         MediaCodecInfo[] codecInfos = codecList.getCodecInfos();
         for (MediaCodecInfo codecInfo : codecInfos) {

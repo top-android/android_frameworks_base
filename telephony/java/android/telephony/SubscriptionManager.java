@@ -5443,4 +5443,20 @@ public class SubscriptionManager {
             throw ex.rethrowFromSystemServer();
         }
     }
+
+    /**
+     * A12 兼容垫片（cannon A15 old-vendor）：
+     * A15 删除了 SubscriptionManager.getSimStateForSlotIndex(int) 静态方法，
+     * 但原厂 prebuilt com.mediatek.ims（ImsConfigEventReceiver）仍在静态调用它，
+     * 缺失时 NoSuchMethodError 崩溃 → IMS 挂 → VoLTE 通话/短信失效。
+     * 直接委托给 TelephonyManager 里同名 public static 实现（语义一致）。
+     * 注意：必须 @hide —— 这是给 prebuilt ims 运行时用的兼容垫片，不属于公开
+     * API 面；否则 check_current_api 会因新增 public API 未登记而构建失败。
+     * @hide
+     * @removed
+     */
+    @Deprecated
+    public static int getSimStateForSlotIndex(int slotIndex) {
+        return TelephonyManager.getSimStateForSlotIndex(slotIndex);
+    }
 }
