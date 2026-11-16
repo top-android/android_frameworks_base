@@ -541,8 +541,12 @@ public class GnssNative {
 
         // gnss chipset appears to require an init/cleanup cycle on startup in order to properly
         // initialize - undocumented and no idea why this is the case
+        //
+        // cannon: MTK's A12 HAL builds the @mtk_mnl2hal uplink inside setCallback() and tears
+        // it down in close(). The immediate cleanup below therefore left the HAL running with
+        // no uplink at all (mnld gets ECONNREFUSED for every NMEA/SV/measurement), and later
+        // setCallback() calls do not recreate it. Skip the cycle on this device.
         if (mGnssHal.init()) {
-            mGnssHal.cleanup();
             Log.i(TAG, "gnss hal initialized");
         } else {
             Log.e(TAG, "gnss hal initialization failed");
