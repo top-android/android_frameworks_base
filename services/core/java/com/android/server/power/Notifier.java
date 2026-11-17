@@ -1313,6 +1313,17 @@ public class Notifier {
             }
 
             // play sound
+            // cannon: a system_server MediaPlayer (created via Ringtone below) leaks and its
+            // finalize() blocks 10s on the broken A12-vendor media stack => FinalizerWatchdogDaemon
+            // SIGKILLs system_server => boot loop. Skip system sounds by default (same switch as
+            // SoundEffectsHelper). Set persist.sys.cannon.skip_sfx_mediaplayer=false to restore.
+            if (android.os.SystemProperties.getBoolean(
+                    "persist.sys.cannon.skip_sfx_mediaplayer", true)) {
+                Slog.w(TAG, "skip charging-started sound (system MediaPlayer disabled: cannon"
+                        + " old-vendor media stack)");
+                mIsPlayingChargingStartedFeedback.set(false);
+                return;
+            }
             final String soundPath = Settings.Global.getString(mContext.getContentResolver(),
                     wireless ? Settings.Global.WIRELESS_CHARGING_STARTED_SOUND
                             : Settings.Global.CHARGING_STARTED_SOUND);

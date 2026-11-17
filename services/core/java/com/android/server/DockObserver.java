@@ -337,7 +337,10 @@ final class DockObserver extends SystemService {
                     }
                 }
 
-                if (whichSound != null) {
+                // cannon: system_server MediaPlayer via Ringtone leaks and finalize() blocks on
+                // the A12-vendor media stack => kills system_server (same switch as SoundEffectsHelper).
+                if (whichSound != null && !android.os.SystemProperties.getBoolean(
+                        "persist.sys.cannon.skip_sfx_mediaplayer", true)) {
                     final String soundPath = Settings.Global.getString(cr, whichSound);
                     if (soundPath != null) {
                         final Uri soundUri = Uri.parse("file://" + soundPath);

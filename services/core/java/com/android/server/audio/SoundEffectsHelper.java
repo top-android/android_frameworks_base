@@ -270,6 +270,17 @@ class SoundEffectsHelper {
         if (mSoundPool != null && res.mSampleId != EFFECT_NOT_IN_SOUND_POOL && res.mLoaded) {
             mSoundPool.play(res.mSampleId, volFloat, volFloat, 0, 0, 1.0f);
         } else {
+            // cannon: A15 system libs + A12 vendor media stack => MediaPlayerService calls
+            // park forever (see StorageManagerService.isHevcDecoderSupported and its note on
+            // BpMediaPlayerService::getCodecList blocking). MediaPlayer.native_finalize() then
+            // blocks for 10s on GC => FinalizerWatchdogDaemon SIGKILLs system_server => bootloop.
+            // System effect sounds are non-essential, so skip the MediaPlayer fallback by default
+            // (set persist.sys.cannon.skip_sfx_mediaplayer=false to restore upstream behavior).
+            if (android.os.SystemProperties.getBoolean("persist.sys.cannon.skip_sfx_mediaplayer", true)) {
+                Log.w(TAG, "skip system sound effect " + mEffects[effect]
+                        + " (MediaPlayer fallback disabled: cannon old-vendor media stack)");
+                return;
+            }
             MediaPlayer mediaPlayer = new MediaPlayer();
             try {
                 String filePath = getResourceFilePath(res);

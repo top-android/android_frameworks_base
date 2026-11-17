@@ -1262,9 +1262,12 @@ public class GnssLocationProvider extends AbstractLocationProvider implements
             int interval = mGnssNative.getCapabilities().hasScheduling() ? mFixInterval : 1000;
             if (!setPositionMode(mPositionMode, GNSS_POSITION_RECURRENCE_PERIODIC,
                     interval, mProviderRequest.isLowPower())) {
-                setStarted(false);
-                Log.e(TAG, "set_position_mode failed in startNavigating()");
-                return;
+                // cannon: MTK's AIDL GNSS wrapper rejects setPositionMode(), and
+                // aborting here leaves the engine off forever: start() is never
+                // called, so mnld never sets up its HAL socket and no fix is
+                // ever produced. Keep going; if the HAL really needed the
+                // position mode it will fail start() right below.
+                Log.w(TAG, "set_position_mode failed in startNavigating(), continuing to start()");
             }
             if (!mGnssNative.start()) {
                 setStarted(false);

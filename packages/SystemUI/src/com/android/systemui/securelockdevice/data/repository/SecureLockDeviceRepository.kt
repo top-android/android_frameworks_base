@@ -81,12 +81,26 @@ constructor(
                     }
 
                 updateSecureLockDeviceEnabledState(false)
-                authenticationPolicyManager?.registerSecureLockDeviceStatusListener(
-                    backgroundExecutor,
-                    listener,
-                )
+                // cannon(A16/4.14 vendor): MANAGE_SECURE_LOCK_DEVICE is feature-gated by
+                // android.security.secure_lockdown (undefined on this build) while the code gate
+                // secure_lock_device is on, so this binder call throws SecurityException and
+                // crash-loops SystemUI (-> RescueParty requests data wipe). Degrade: swallow it.
+                try {
+                    authenticationPolicyManager?.registerSecureLockDeviceStatusListener(
+                        backgroundExecutor,
+                        listener,
+                    )
+                } catch (e: SecurityException) {
+                    Log.w(TAG, "cannon: registerSecureLockDeviceStatusListener denied, degrade", e)
+                }
                 awaitClose {
-                    authenticationPolicyManager?.unregisterSecureLockDeviceStatusListener(listener)
+                    try {
+                        authenticationPolicyManager?.unregisterSecureLockDeviceStatusListener(
+                            listener
+                        )
+                    } catch (e: SecurityException) {
+                        Log.w(TAG, "cannon: unregisterSecureLockDeviceStatusListener denied, degrade", e)
+                    }
                 }
             }
         } else {

@@ -124,11 +124,16 @@ class AppOpService(private val service: AccessCheckingService) : AppOpsCheckingS
                 // Multiple ops might map to a single permission but only one is considered the
                 // runtime appop calculations.
                 if (appOpCode == AppOpsManager.permissionToOpCode(permissionName)) {
-                    val permission =
-                        checkNotNull(permissions[permissionName]) {
-                            "Missing permission definition for permission \"$permissionName\"" +
-                                " associated with app op $appOpCode"
-                        }
+                    // cannon(A16/bp1a)：个别 featureFlag 权限在本 release(bp1a) 未定义、却在
+                    // bp2a/trunk_staging 为 ENABLED → appop 侧启用、权限侧排除，checkNotNull 会
+                    // 打死 system_server。老 vendor/新 Android 不应因此崩溃：降级——跳过该 op。
+                    val permission = permissions[permissionName]
+                    if (permission == null) {
+                        Slog.w("AppOpService",
+                            "cannon: skip app op $appOpCode: permission \"$permissionName\"" +
+                                " not defined (flag mismatch, degrade)")
+                        return@let
+                    }
                     if (permission.isRuntime) {
                         runtimePermissionNameToAppOp[permissionName] = appOpCode
                         runtimeAppOpToPermissionNames[appOpCode] = permissionName
