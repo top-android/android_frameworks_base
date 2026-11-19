@@ -1301,8 +1301,14 @@ public class PackageManagerServiceUtils {
         // There are several items that need to be combined together to safely
         // identify cached items. In particular, changing the value of certain
         // feature flags should cause us to invalidate any caches.
+        // Also key the cache on the build timestamp. Devices that pin the vendor
+        // fingerprint (common on Xiaomi/MTK trees) keep the same FINGERPRINT across builds,
+        // and for directory-style system apps PackageCacher's freshness check compares the
+        // *directory* mtime, which is a constant on read-only images. Without this a
+        // replaced priv-app APK would never be re-parsed after an update.
         final String cacheName = FORCE_PACKAGE_PARSED_CACHE_ENABLED ? "debug"
-                : PackagePartitions.FINGERPRINT;
+                : PackagePartitions.FINGERPRINT + "-"
+                        + SystemProperties.get("ro.build.date.utc", "0");
 
         // Reconcile cache directories, keeping only what we'd actually use.
         for (File cacheDir : FileUtils.listFilesOrEmpty(cacheBaseDir)) {

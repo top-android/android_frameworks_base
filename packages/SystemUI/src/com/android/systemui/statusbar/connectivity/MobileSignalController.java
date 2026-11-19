@@ -237,12 +237,9 @@ public class MobileSignalController extends SignalController<MobileState, Mobile
             if (mInflateSignalStrengths) {
                 level++;
             }
-            boolean dataDisabled = mCurrentState.userSetup
-                    && (mCurrentState.iconGroup == TelephonyIcons.DATA_DISABLED
-                    || (mCurrentState.iconGroup == TelephonyIcons.NOT_DEFAULT_DATA
-                            && mCurrentState.defaultDataOff));
-            boolean noInternet = mCurrentState.inetCondition == 0;
-            boolean cutOut = dataDisabled || noInternet;
+            // [cannon] 国内 ROM 不在信号格上叠加"!"/"x"：数据关闭或网络未通过验证时
+            // 也只显示纯信号格，避免出现「4 格信号 + 感叹号」这种状态。
+            boolean cutOut = false;
             return SignalDrawable.getState(level, getNumLevels(), cutOut);
         } else if (mCurrentState.enabled) {
             return SignalDrawable.getEmptyState(getNumLevels());

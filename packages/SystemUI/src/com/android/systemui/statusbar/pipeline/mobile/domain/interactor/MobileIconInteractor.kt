@@ -308,15 +308,20 @@ class MobileIconInteractorImpl(
 
     override val isAllowedDuringAirplaneMode = connectionRepository.isAllowedDuringAirplaneMode
 
-    /** Whether or not to show the error state of [SignalDrawable] for cellular connections */
+    /**
+     * Whether or not to show the error state of [SignalDrawable] for cellular connections.
+     *
+     * [cannon] 国内 ROM 不在信号格上叠加"!"：数据关闭、网络还没通过校验、无服务时都只显示
+     * 纯信号格，避免出现「4 格信号 + 感叹号」这种状态。
+     */
     private val showExclamationMarkForCellular: StateFlow<Boolean> =
         combine(defaultSubscriptionHasDataEnabled, isDefaultConnectionFailed, isInService) {
-                isDefaultDataEnabled,
-                isDefaultConnectionFailed,
-                isInService ->
-                !isDefaultDataEnabled || isDefaultConnectionFailed || !isInService
+                _,
+                _,
+                _ ->
+                false
             }
-            .stateIn(scope, SharingStarted.WhileSubscribed(), true)
+            .stateIn(scope, SharingStarted.WhileSubscribed(), false)
 
     /** Whether or not to show the error state of [SignalDrawable] for satellite connection */
     private val showExclamationMarkForSatellite: StateFlow<Boolean> =

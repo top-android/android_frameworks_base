@@ -3388,9 +3388,20 @@ public class ComputerEngine implements Computer {
                 Slog.v(TAG, "Best match: 0x" + Integer.toHexString(match));
             }
             match &= IntentFilter.MATCH_CATEGORY_MASK;
-            final int m = prefs.size();
+
+            // A later explicit choice must win over an older one. The resolver returns the
+            // entries in insertion order (stable sort by priority) and the first entry that
+            // also appears in the query is returned below, so a stale per-MIME preference
+            // (e.g. video/mp4 -> A) would keep beating a newer wildcard preference
+            // (video/* -> B) even after the user changed the default. Walk the list backwards
+            // to visit the most recently added entry first, keeping higher priorities ahead.
+            final ArrayList<PreferredActivity> ordered = new ArrayList<>(prefs);
+            Collections.reverse(ordered);
+            ordered.sort(Comparator.comparingInt(PreferredActivity::getPriority).reversed());
+
+            final int m = ordered.size();
             for (int i = 0; i < m; i++) {
-                final PreferredActivity pa = prefs.get(i);
+                final PreferredActivity pa = ordered.get(i);
                 if (DEBUG_PREFERRED || debug) {
                     Slog.v(TAG, "Checking PreferredActivity ds="
                             + (pa.countDataSchemes() > 0 ? pa.getDataScheme(0) : "<none>")
@@ -3464,68 +3475,11 @@ public class ComputerEngine implements Computer {
                     }
 
                     // Okay we found a previously set preferred or last chosen app.
-                    // If the result set is different from when this
-                    // was created, and is not a subset of the preferred set, we need to
-                    // clear it and re-ask the user their preference, if we're looking for
-                    // an "always" type entry.
-
-                    if (always
-                            && !pa.mPref.sameSet(query, excludeSetupWizardHomeActivity, userId)) {
-                        if (pa.mPref.isSuperset(query, excludeSetupWizardHomeActivity)) {
-                            if (allowSetMutation) {
-                                // some components of the set are no longer present in
-                                // the query, but the preferred activity can still be reused
-                                if (DEBUG_PREFERRED) {
-                                    Slog.i(TAG, "Result set changed, but PreferredActivity"
-                                            + " is still valid as only non-preferred"
-                                            + " components were removed for " + intent
-                                            + " type " + resolvedType);
-                                }
-                                // remove obsolete components and re-add the up-to-date
-                                // filter
-                                PreferredActivity freshPa = new PreferredActivity(pa,
-                                        pa.mPref.mMatch,
-                                        pa.mPref.discardObsoleteComponents(query),
-                                        pa.mPref.mComponent,
-                                        pa.mPref.mAlways);
-                                pir.removeFilter(pa);
-                                pir.addFilter(this, freshPa);
-                                result.mChanged = true;
-                            } else {
-                                if (DEBUG_PREFERRED) {
-                                    Slog.i(TAG, "Do not remove preferred activity");
-                                }
-                            }
-                        } else {
-                            final boolean isHomeActivity = ACTION_MAIN.equals(intent.getAction())
-                                    && intent.hasCategory(CATEGORY_HOME);
-                            if (!isHomeActivity) {
-                                // Don't reset the preferred activity just for the home intent, we
-                                // should respect the default home app even though there any new
-                                // home activity is enabled.
-                                if (allowSetMutation) {
-                                    Slog.i(TAG,
-                                            "Result set changed, dropping preferred activity "
-                                                    + "for " + intent + " type "
-                                                    + resolvedType);
-                                    if (DEBUG_PREFERRED) {
-                                        Slog.v(TAG,
-                                                "Removing preferred activity since set changed "
-                                                        + pa.mPref.mComponent);
-                                    }
-                                    pir.removeFilter(pa);
-                                    // Re-add the filter as a "last chosen" entry (!always)
-                                    PreferredActivity lastChosen = new PreferredActivity(
-                                            pa, pa.mPref.mMatch, null, pa.mPref.mComponent,
-                                            false);
-                                    pir.addFilter(this, lastChosen);
-                                    result.mChanged = true;
-                                }
-                                result.mPreferredResolveInfo = null;
-                                return result;
-                            }
-                        }
-                    }
+                    // [cannon] Keep the user's explicit default even when the set of handlers
+                    // changed since it was recorded. The preferred component is still in the
+                    // query (checked above), and dropping the preference here makes a chosen
+                    // default useless as soon as one more app starts handling the type: the
+                    // chooser then comes back on every single resolve.
 
                     // Yay! Either the set matched or we're looking for the last chosen
                     if (DEBUG_PREFERRED || debug) {

@@ -63,6 +63,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 
 final class PreferredActivityHelper {
     // XML tags for backup/restore of various bits of state
@@ -212,6 +213,9 @@ final class PreferredActivityHelper {
             final ArrayList<PreferredActivity> existing = pir.findFilters(filter);
             if (removeExisting && existing != null) {
                 Settings.removeFilters(pir, filter, existing);
+            }
+            if (always) {
+                removeOverlappingPreferredActivities(pir, filter.getIntentFilter());
             }
             pir.addFilter(mPm.snapshotComputer(),
                     new PreferredActivity(filter, match, set, activity, always));
@@ -754,5 +758,130 @@ final class PreferredActivityHelper {
                 resolvedType, flags, userId);
         return findPreferredActivityNotLocked(snapshot, intent, resolvedType, flags, query, false,
                 false, false, userId);
+    }
+
+    /**
+     * Drops existing "always" preferences that overlap the filter being added, as long as they
+     * are not broader than it.
+     *
+     * {@link ComputerEngine#findPreferredActivityBody} only considers preferences whose match
+     * category equals the best normal match, and then returns the first one whose component is
+     * in the query. A stale per-MIME entry (e.g. video/mp4 -> A, created by picking "always" in
+     * the chooser) therefore keeps beating a default the user sets later for the whole family
+     * (video/* -> B), no matter which one was added last. Since adding an "always" preference is
+     * an explicit user choice, evict the narrower overlapping entries so that the choice really
+     * takes effect.
+     *
+     * Broader entries are left alone on purpose: choosing a default for video/mp4 must not wipe
+     * the user's video/* default for every other video type.
+     */
+    private static void removeOverlappingPreferredActivities(
+            @NonNull PreferredIntentResolver pir, @NonNull IntentFilter filter) {
+        if (filter.countDataTypes() == 0) {
+            return;
+        }
+        final Set<PreferredActivity> all = pir.filterSet();
+        if (all.isEmpty()) {
+            return;
+        }
+        ArrayList<PreferredActivity> doomed = null;
+        for (PreferredActivity cur : all) {
+            if (!cur.mPref.mAlways || !filtersOverlap(filter, cur.getIntentFilter())) {
+                continue;
+            }
+            // cur is broader than the filter being added (e.g. cur=video/*, new=video/mp4):
+            // keep it, the new entry only covers a subset of what it already handles.
+            if (hasPartialTypes(cur.getIntentFilter()) && !hasPartialTypes(filter)) {
+                continue;
+            }
+            if (doomed == null) {
+                doomed = new ArrayList<>();
+            }
+            doomed.add(cur);
+        }
+        if (doomed == null) {
+            return;
+        }
+        if (DEBUG_PREFERRED) {
+            Slog.v(TAG, "Removing " + doomed.size() + " overlapping preferred activities for "
+                    + filter);
+        }
+        for (PreferredActivity cur : doomed) {
+            pir.removeFilter(cur);
+        }
+    }
+
+    /** Whether two filters can match the same intent (same action, intersecting types/schemes). */
+    private static boolean filtersOverlap(@NonNull IntentFilter a, @NonNull IntentFilter b) {
+        boolean action = false;
+        for (int i = 0; i < a.countActions(); i++) {
+            if (b.hasAction(a.getAction(i))) {
+                action = true;
+                break;
+            }
+        }
+        if (!action) {
+            return false;
+        }
+
+        final int na = a.countDataTypes();
+        final int nb = b.countDataTypes();
+        if (na == 0 || nb == 0) {
+            // Only MIME-typed preferences are handled here; scheme-only ones (e.g. mailto)
+            // are left untouched.
+            return false;
+        }
+        boolean type = false;
+        for (int i = 0; i < na && !type; i++) {
+            for (int j = 0; j < nb; j++) {
+                if (dataTypesOverlap(a, a.getDataType(i), b, b.getDataType(j))) {
+                    type = true;
+                    break;
+                }
+            }
+        }
+        if (!type) {
+            return false;
+        }
+
+        final int sa = a.countDataSchemes();
+        final int sb = b.countDataSchemes();
+        if (sa > 0 && sb > 0) {
+            boolean scheme = false;
+            for (int i = 0; i < sa && !scheme; i++) {
+                if (b.hasDataScheme(a.getDataScheme(i))) {
+                    scheme = true;
+                }
+            }
+            if (!scheme) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** IntentFilter stores a partial type ("video/*") as its base name ("video"). */
+    private static boolean isPartialType(String type) {
+        return type.indexOf('/') < 0;
+    }
+
+    private static boolean hasPartialTypes(IntentFilter filter) {
+        for (int i = 0; i < filter.countDataTypes(); i++) {
+            if (isPartialType(filter.getDataType(i))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean dataTypesOverlap(IntentFilter a, String ta, IntentFilter b, String tb) {
+        if (ta.equals(tb)) {
+            return true;
+        }
+        // Partial types are stored without the "/*" suffix, so "video" covers "video/mp4".
+        if (isPartialType(ta) && tb.startsWith(ta + "/")) {
+            return true;
+        }
+        return isPartialType(tb) && ta.startsWith(tb + "/");
     }
 }

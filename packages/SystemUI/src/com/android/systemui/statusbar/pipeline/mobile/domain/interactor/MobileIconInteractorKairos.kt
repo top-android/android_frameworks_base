@@ -298,13 +298,17 @@ class MobileIconInteractorKairosImpl(
     override val isAllowedDuringAirplaneMode: State<Boolean>
         get() = connectionRepository.isAllowedDuringAirplaneMode
 
-    /** Whether or not to show the error state of [SignalDrawable] for cellular connections */
+    /**
+     * Whether or not to show the error state of [SignalDrawable] for cellular connections.
+     *
+     * [cannon] 国内 ROM 不在信号格上叠加"!"，只显示纯信号格。
+     */
     private val showExclamationMarkForCellular: State<Boolean> =
         combine(defaultSubscriptionHasDataEnabled, isDefaultConnectionFailed, isInService) {
-            isDefaultDataEnabled,
-            isDefaultConnectionFailed,
-            isInService ->
-            !isDefaultDataEnabled || isDefaultConnectionFailed || !isInService
+            _,
+            _,
+            _ ->
+            false
         }
 
     /** Whether or not to show the error state of [SignalDrawable] for satellite connections */
